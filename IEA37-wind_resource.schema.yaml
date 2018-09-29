@@ -139,6 +139,15 @@ properties:
               $ref: "#/definitions/variables/turbulence_intensity"
             minItems: 2
       #~~
+      wind_shear_exponent:
+        anyOf:
+          - $ref: "#/definitions/variables/wind_shear"
+              # Constant wind shear
+          - type: array
+            items:
+              $ref: "#/definitions/variables/wind_shear"
+            minItems: 2
+      #~~
       atmospheric_stability:
         anyOf:
           - $ref: "#/definitions/variables/atmospheric_stability"
@@ -218,6 +227,11 @@ definitions:
         unit: null
         minimum: 0.0
         maximum: 1.0
+      #~~
+      wind_shear_exponent:
+        description: The exponent of the wind shear power law
+        type: number
+        unit: null
       #~~
       atmospheric_stability:
         type: string
