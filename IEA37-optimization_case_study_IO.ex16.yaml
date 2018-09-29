@@ -1,0 +1,40 @@
+uuid: b4bd7a81-0aa9-4be0-8992-0357d30e2724
+name: IEA Wind Task 37 Combined Case Study 16 Turbine Farm
+wind_resource: "IEA37-wind_resource.case_study.yaml"
+  # TODO: make it a full URL
+wind_turbine_type: "IEA37-wind_turbine.onshore_reference.yaml"
+  # TODO: make it a full URL
+wake_model:
+  name: Simplified Bastankhah Gaussian wake model
+  details: "iea37-wakemodel.pdf"
+    # TODO: make it a full URL
+constraints:
+  number_of_turbines: 16
+  site_radius: 1300.0
+  turbine_distance: 260.0
+optimization_method: # TODO: This is unknown, perhaps there was no optimization
+  name: unknown
+  details: null
+wind_turbine_positions:
+  - [0.0, 0.0]
+  - [650.0, 0.0]
+  - [200.861, 618.1867]
+  - [-525.861, 382.0604]
+  - [-525.861, -382.0604]
+  - [200.861, -618.1867]
+  - [1300.0, 0.0]
+  - [1051.7221, 764.1208]
+  - [401.7221, 1236.3735]
+  - [-401.7221, 1236.3735]
+  - [-1051.7221, 764.1208]
+  - [-1300.0, 0.0]
+  - [-1051.7221, -764.1208]
+  - [-401.7221, -1236.3735]
+  - [401.7221, -1236.3735]
+  - [1051.7221, -764.1208]
+farm_output:
+  binned: [ 9.44460012,  8.49790004, 11.38332869, 14.17340367,
+           20.97936776, 25.59086774, 39.25285757, 43.19765856,
+           23.80039229, 13.53936766, 15.02289800, 32.64444314,
+           71.15732322, 18.09210102, 12.32648041,  7.83858128]
+  AEP: 366.94157116
