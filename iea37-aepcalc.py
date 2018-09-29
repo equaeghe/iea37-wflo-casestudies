@@ -130,7 +130,7 @@ def calcAEP(turb_coords, wind_freq, wind_speed, wind_dir, turb_ci, turb_co):
     #  Convert power to AEP
     hrs_per_year = 365.*24.
     AEP = hrs_per_year * (wind_freq * pwr_produced)
-    AEP /= 1.E6  # Convert to MWh
+    AEP /= 1.E3  # Convert to GWh from MWh
 
     return AEP
 
@@ -142,30 +142,20 @@ def getTurbLocYAML(file_name):
     """
     # Read in the .yaml file
     with open(file_name, 'r') as f:
-        defs = yaml.safe_load(f)['definitions']
+        props = yaml.safe_load(f)
 
-    # Rip the x- and y-coordinates (Convert from <list> to <ndarray>)
-    turb_xc = np.asarray(defs['position']['items']['xc'])
-    turb_yc = np.asarray(defs['position']['items']['yc'])
-    turb_coords = np.recarray(turb_xc.shape, coordinate)
-    turb_coords.x, turb_coords.y = turb_xc, turb_yc
+    # Rip the coordinates (Convert from <list> to <recarray>)
+    positions = props['wind_turbine_positions']
+    turb_coords = np.fromiter(map(tuple, positions),
+                              dtype=coordinate, count=len(positions))
+    turb_coords = turb_coords.view(np.recarray)
 
     # Rip the expected AEP, used for comparison
-    # AEP = defs['plant_energy']['properties']
-    #           ['annual_energy_production']['default']
+    # AEP = props['farm_output']['AEP']
 
     # Read the auxiliary filenames for the windrose and the turbine attributes
-    ref_list_turbs = defs['wind_plant']['properties']['layout']['items']
-    ref_list_wr = (defs['plant_energy']['properties']
-                       ['wind_resource_selection']['properties']['items'])
-
-    # Iterate through all listed references until we find the one we want
-    # The one we want is the first reference not internal to the document
-    # Note: internal references use '#' as the first character
-    fname_turb = next(ref['$ref']
-                      for ref in ref_list_turbs if ref['$ref'][0] != '#')
-    fname_wr = next(ref['$ref']
-                    for ref in ref_list_wr if ref['$ref'][0] != '#')
+    fname_wr = props['wind_resource']
+    fname_turb = props['wind_turbine_type']
 
     # Return turbine (x,y) locations, and the filenames for the others .yamls
     return turb_coords, fname_turb, fname_wr
@@ -175,14 +165,14 @@ def getWindRoseYAML(file_name):
     """Retrieve wind rose data (bins, freqs, speeds) from <.yaml> file."""
     # Read in the .yaml file
     with open(file_name, 'r') as f:
-        props = yaml.safe_load(f)['definitions']['wind_inflow']['properties']
+        props = yaml.safe_load(f)
 
     # Rip wind directional bins, their frequency, and the farm windspeed
     # (Convert from <list> to <ndarray>)
-    wind_dir = np.asarray(props['direction']['bins'])
-    wind_freq = np.asarray(props['probability']['default'])
+    wind_dir = np.asarray(props['variables']['wind_direction'])
+    wind_freq = np.asarray(props['probability'])
     # (Convert from <list> to <float>)
-    wind_speed = float(props['speed']['default'])
+    wind_speed = float(props['variables']['wind_speed'])
 
     return wind_dir, wind_freq, wind_speed
 
@@ -191,18 +181,15 @@ def getTurbAtrbtYAML(file_name):
     '''Retreive turbine attributes from the <.yaml> file'''
     # Read in the .yaml file
     with open(file_name, 'r') as f:
-        defs = yaml.safe_load(f)['definitions']
-        op_props = defs['operating_mode']['properties']
-        turb_props = defs['wind_turbine_lookup']['properties']
-        rotor_props = defs['rotor']['properties']
+        props = yaml.safe_load(f)
 
     # Rip the turbine attributes
     # (Convert from <list> to <float>)
-    turb_ci = float(op_props['cut_in_wind_speed']['default'])
-    turb_co = float(op_props['cut_out_wind_speed']['default'])
-    rated_ws = float(op_props['rated_wind_speed']['default'])
-    rated_pwr = float(turb_props['power']['maximum'])
-    turb_diam = float(rotor_props['radius']['default']) * 2.
+    turb_ci = float(props['cut_in_wind_speed'])
+    turb_co = float(props['cut_out_wind_speed'])
+    rated_ws = float(props['rated_wind_speed'])
+    rated_pwr = float(props['rated_power'])
+    turb_diam = float(props['rotor_diameter'])
 
     return turb_ci, turb_co, rated_ws, rated_pwr, turb_diam
 
@@ -239,7 +226,7 @@ if __name__ == "__main__":
     AEP = rated_pwr * calcAEP(turb_coords, wind_freq, wind_speed, wind_dir,
                               turb_ci, turb_co)
     # Print AEP for each binned direction, with 5 digits behind the decimal.
-    print(np.array2string(AEP, precision=5, floatmode='fixed',
+    print(np.array2string(AEP, precision=8, floatmode='fixed',
                           separator=', ', max_line_width=62))
     # Print AEP summed for all directions
-    print(np.around(np.sum(AEP), decimals=5))
+    print(np.around(np.sum(AEP), decimals=8))
