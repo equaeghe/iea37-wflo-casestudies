@@ -1,0 +1,233 @@
+# Author: Erik Quaeghebeur
+# Date: 2018-09-26
+
+# NOTE:
+# 1. Below, some white space is added to make the text less cramped. For this,
+#    comments are used, so starting with ‘#’ and then a number of tildes (‘~’)
+#    equal to the number of levels deep in the property tree we are at.
+# 2. $schema, $id, and $ref field values should be wrapped in double quotes
+#    (‘"’) to protect special characters such as ‘#’
+# 3. The line length has been kept below 80 characters for readability; for
+#    this the folded and chomped YAML style indicated by ‘>-’ is convenient.
+
+# HEADER
+$schema: "http://json-schema.org/draft-07/schema#"
+  # NOTE: consult the above-referenced site for the schema language definition
+$id: "http://example.org/IEA37-wind_resource.schema.json"
+  # TODO: the domain of $id must be corrected
+title: Wind resource description
+description: >-
+  A description of a location’s wind resource
+  as a probability mass function or as a case
+type: object
+required:
+  - uuid
+  - averaging_interval_length
+  - reference_height
+  - variables
+  - probability
+additionalProperties: false
+
+# PROPERTIES
+properties:
+  #~
+  uuid:
+    description: A universally unique identifier as per RFC 4122
+    type: string
+    pattern: ^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$
+  #~
+  name:
+    description: The name of the wind resource
+    type: string
+  #~
+  location:
+    description: The geographical location of the wind resource
+    $ref: "#/definitions/location"
+  #~
+  period:
+    description: >-
+      Time intervals of the measurements
+      the probability mass function is derived from
+    type: array
+    items:
+      description: A measurement time interval
+      type: array
+      items:
+        - description: Start date-time of the time interval
+          type: string
+          format: date-time
+        - description: End date-time of the time interval
+          type: string
+          format: date-time
+      uniqueItems: true
+    minItems: 1
+    uniqueItems: true
+  #~
+  averaging_interval_length:
+    description: >-
+      The length of the interval over which the resource variables
+      have been averaged
+    type: number
+    unit: s
+    exclusiveMinimum: 0.0
+  #~
+  reference_height:
+    # TODO: make it clear what a height of 0 m corresponds to
+    description: >-
+      The common height all the physical measurements have been transformed to
+    type: number
+    unit: m
+  #
+  # NOTE: Below come the arrays with data, first for the variables and then for
+  # the probabilities
+  #
+  # TODO: A more tabular representation of the probability mass function
+  # (e.g., as an array of value-tuple/probability pairs) would be more
+  # natural, but seems impossible to nicely specify as a (sufficiently
+  # validatable) JSON schema, although it can be easily represented using
+  # JSON/YAML.
+  #~
+  variables:
+    description: >-
+      The variables of the probability mass function; each either a constant,
+      or an array of values of length equal over all variables
+    type: object
+    required:
+      - wind_speed
+    additionalProperties: false
+    properties:
+      # NOTE: one for each variable defined in "#/definitions/variables/"
+      #
+      # TODO:
+      # 1. Any way to not have to repeat the variable names here, but instead
+      #    loop over a list defined in ‘definitions’ somehow?
+      # 2. Array length should be the same over all variables.
+      #~~
+      wind_speed:
+        anyOf:
+          - $ref: "#/definitions/variables/wind_speed"
+              # Constant wind speed
+          - type: array
+            items:
+              $ref: "#/definitions/variables/wind_speed"
+            minItems: 2
+      #~~
+      wind_direction:
+        anyOf:
+          - $ref: "#/definitions/variables/wind_direction"
+              # Constant wind direction
+          - type: array
+            items:
+              $ref: "#/definitions/variables/wind_direction"
+            minItems: 2
+      #~~
+      air_density:
+        anyOf:
+          - $ref: "#/definitions/variables/air_density"
+              # Constant air density
+          - type: array
+            items:
+              $ref: "#/definitions/variables/air_density"
+            minItems: 2
+      #~~
+      turbulence_intensity:
+        anyOf:
+          - $ref: "#/definitions/variables/turbulence_intensity"
+              # Constant turbulence intensity
+          - type: array
+            items:
+              $ref: "#/definitions/variables/turbulence_intensity"
+            minItems: 2
+      #~~
+      atmospheric_stability:
+        anyOf:
+          - $ref: "#/definitions/variables/atmospheric_stability"
+              # Constant atmospheric stability
+          - type: array
+            items:
+              $ref: "#/definitions/variables/atmospheric_stability"
+            minItems: 2
+  #~
+  probability:
+    # TODO:
+    # 1. Probability mass sums up to 1.
+    # 2. Array length should be the same as for variables.
+    description: >-
+      The probability mass function as an array of probability mass-pairs
+    oneOf:
+      - const: null
+          # Case; all variables should be constant.
+      - type: array
+        items:
+          $ref: "#/definitions/probability"
+        minItems: 2
+
+# DEFINITIONS
+definitions:
+  # NOTE: Any of these definitions can be externalized (to a file) for
+  # convenient reuse
+  #~
+  location:
+    title: Longitude and Latitude
+    description: A geographical coordinate on a planet (most commonly Earth).
+    required:
+      - latitude
+      - longitude
+    type: object
+    properties:
+      name:
+        description: The name of the location
+        type: string
+      latitude:
+        type: number
+        minimum: -90
+        maximum: 90
+      longitude:
+        type: number
+        exclusiveMinimum: -180
+        maximum: 180
+    additionalProperties: false
+  #~
+  variables:
+    description: The schemata for the physical variables
+    type: object
+    properties:
+      # TODO: The ‘unit’ field of the variables is not defined by the schema
+      # language and therefore may require an extension to that language to
+      # ‘properly’ deal with it.
+      #~~
+      wind_speed:
+        type: number
+        unit: m/s
+        minimum: 0.0
+      #~~
+      wind_direction:
+        type: number
+        unit: degree
+        minimum: 0.0
+        exclusiveMaximum: 360.0
+      #~~
+      air_density:
+        type: number
+        unit: kg/m³
+        minimum: 0.0
+        default: 1.2041
+      #~~
+      turbulence_intensity:
+        type: number
+        unit: null
+        minimum: 0.0
+        maximum: 1.0
+      #~~
+      atmospheric_stability:
+        type: string
+        enum:
+          - stable
+          - neutral
+          - unstable
+  #~
+  probability:
+    description: Probability value
+    type: number
+    minimum: 0
+    maximum: 1
