@@ -1,0 +1,9 @@
+uuid: c08bd7a6-91d2-4ffb-a102-43f20b0b381c
+  # generated using https://www.uuidgenerator.net/
+name: IEA37 3.35 MW onshore reference turbine
+rated_power: 3.35
+rotor_diameter: 130
+cut_in_wind_speed: 4.0
+rated_wind_speed: 9.8
+cut_out_wind_speed: 25
+hub_height: 110.0
