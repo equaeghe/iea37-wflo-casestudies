@@ -1,0 +1,165 @@
+# Author: Erik Quaeghebeur
+# Date: 2018-09-29
+
+# NOTE:
+# 1. Below, some white space is added to make the text less cramped. For this,
+#    comments are used, so starting with ‘#’ and then a number of tildes (‘~’)
+#    equal to the number of levels deep in the property tree we are at.
+# 2. $schema, $id, and $ref field values should be wrapped in double quotes
+#    (‘"’) to protect special characters such as ‘#’
+# 3. The line length has been kept below 80 characters for readability; for
+#    this the folded and chomped YAML style indicated by ‘>-’ is convenient.
+
+# HEADER
+$schema: "http://json-schema.org/draft-07/schema#"
+  # NOTE: consult the above-referenced site for the schema language definition
+$id: "http://example.org/IEA37-optimization_case_study.schema.json"
+  # TODO: the domain of $id must be corrected
+title: Optimization case study description
+description: >-
+  A description of a specific instance of a the IEA37 wind farm layout
+  optimization case study in terms of its inputs and outputs
+type: object
+required:
+  - uuid
+  - wind_resource
+  - wind_turbine_type
+  - wake_model
+  - constraints
+  - optimization_method
+  - wind_turbine_positions
+  - farm_output
+additionalProperties: false
+
+# PROPERTIES
+properties:
+  #~
+  uuid:
+    description: A universally unique identifier as per RFC 4122
+    type: string
+    pattern: ^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$
+  #~
+  name:
+    description: The name of the case study instance
+    type: string
+  #~
+  wind_resource:
+    description: An URI that points to a description of the wind resource
+    type: string
+  #~
+  wind_turbine_type:
+    # NOTE: It is assumed all turbines are identical
+    description: An URI that points to a description of the wind turbine
+    type: string
+  #~
+  wake_model:
+    type: object
+    required:
+      - name
+      - details
+    additionalProperties: false
+    properties:
+      #~~
+      name:
+        description: The name of the wake model
+        type: string
+      #~~
+      details:
+        description: >-
+          An URI that points to a detailed description of the wake model,
+          including parameter settings
+        type: string
+  #~
+  constraints:
+    description: The constraints on the wind farm
+    type: object
+    required:
+      - number_of_turbines
+      - site_radius
+      - turbine_distance
+    additionalProperties: false
+    properties:
+      #~~
+      number_of_turbines:
+        type: integer
+        exclusiveMinimum: 0
+      #~~
+      site_radius:
+        description: The radius of the wind farm site
+          # NOTE: It is assumed that the site is circular
+        type: number
+        unit: m
+      #~~
+      turbine_distance:
+        description: >-
+          The minimum distance at which turbines
+          should be placed from each other
+        type: number
+        exclusiveMinimum: 0
+        unit: m
+  #~
+  optimization_method:
+    type: object
+    required:
+      - name
+      - details
+    additionalProperties: false
+    properties:
+      #~~
+      name:
+        description: The name of the optimization method
+        type: string
+      #~~
+      details:
+        description: >-
+          An URI that points to a detailed description of
+          the optimization method, including parameter settings
+        type: string
+  #~
+  wind_turbine_positions:
+    type: array
+      # TODO: The length of the array should be equal to
+      # ‘constraints.number_of_turbines’, but we cannot describe this using
+      # the current state of the schema language
+    items:
+      description: >-
+        A pair of coordinates for a wind turbine,
+        the first is the x-coordinate and the second the y-coordinate
+      type: array
+      items:
+        description: Coordinate as a signed distance from the site center
+        type: number
+          # TODO: Precision? One of a m or a dm would be reasonable.
+        unit: m
+      minItems: 2
+      maxItems: 2
+  #~
+  farm_output:
+    type: object
+    required:
+      - binned
+      - AEP
+    additionalProperties: false
+    properties:
+      #~~
+      binned:
+        description: >-
+          The array of annual energy produced in each of the cases considered
+          by the wind resource description
+        type: array
+        items:
+          type: number
+            # NOTE: Specify with a precision of one hWh (hectoWatt-hour)
+            # TODO: A precision of one MWh would be more reasonable
+          unit: GWh
+      #~~
+      AEP:
+        description: >-
+          The expected annual energy production
+          of the farm described by the other properties
+        type: number
+          # NOTE:
+          # 1. This is the sum of ‘binned’
+          # 2. Specify with a precision of one hWh (hectoWatt-hour)
+          # TODO: A precision of one MWh would be more reasonable
+        unit: GWh
