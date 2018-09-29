@@ -1,80 +1,9 @@
-# Author: Erik Quaeghebeur
-# Date: 2018-09-29
-
-# NOTE:
-# 1. Below, some white space is added to make the text less cramped. For this,
-#    comments are used, so starting with ‘#’ and then a number of tildes (‘~’)
-#    equal to the number of levels deep in the property tree we are at.
-# 2. $schema, $id, and $ref field values should be wrapped in double quotes
-#    (‘"’) to protect special characters such as ‘#’
-# 3. The line length has been kept below 80 characters for readability; for
-#    this the folded and chomped YAML style indicated by ‘>-’ is convenient.
-
-# HEADER
-$schema: "http://json-schema.org/draft-07/schema#"
-  # NOTE: consult the above-referenced site for the schema language definition
-$id: "http://example.org/IEA37-wind_turbine.schema.json"
-  # TODO: the domain of $id must be corrected
-title: Wind turbine description
-description: >-
-  A description of a wind turbine as a set of defining parameters;
-  this version assumes the power curve is continuous and cubic
-  between cut-in and rated wind speeds
-type: object
-required:
-  - uuid
-  - rated_power
-  - rotor_diameter
-  - cut_in_wind_speed
-  - rated_wind_speed
-  - cut_out_wind_speed
-  - hub_height
-additionalProperties: false
-
-# PROPERTIES
-properties:
-  #~
-  uuid:
-    description: A universally unique identifier as per RFC 4122
-    type: string
-    pattern: ^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$
-  #~
-  name:
-    description: The name of the wind turbine
-    type: string
-  #~
-  rated_power:
-    description: The rated (maximum) power of the wind turbine
-    type: number
-    unit: MW
-  #~
-  rotor_diameter:
-    description: The diameter of the rotor of the wind turbine
-    type: number
-    unit: m
-  #~
-  cut_in_wind_speed:
-    description: >-
-      The cut-in wind speed of the wind turbine, i.e., the wind speed below
-      which there is no production
-    type: number
-    unit: m/s
-  #~
-  rated_wind_speed:
-    description: >-
-      The rated wind speed of the wind turbine, i.e., the wind speed below
-      which the production is a cubic
-    type: number
-    unit: m/s
-  #~
-  cut_out_wind_speed:
-    description: >-
-      The cut-out wind speed of the wind turbine, i.e., the wind speed above
-      which there is no production
-    type: number
-    unit: m/s
-  #~
-  hub_height:
-    description: The height of the rotor hub
-    type: number
-    unit: m
+uuid: c08bd7a6-91d2-4ffb-a102-43f20b0b381c
+  # generated using https://www.uuidgenerator.net/
+name: IEA37 3.35 MW onshore reference turbine
+rated_power: 3.35
+rotor_diameter: 130
+cut_in_wind_speed: 4.0
+rated_wind_speed: 9.8
+cut_out_wind_speed: 25
+hub_height: 110.0
