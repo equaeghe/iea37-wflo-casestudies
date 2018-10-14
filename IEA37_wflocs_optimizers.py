@@ -83,7 +83,17 @@ def random_layout(number_of_turbines: int, farm_radius: float):
     return constraint_fixer(layout, farm_radius)
 
 
-def search_equilibrium(layout, farm_radius: float, tol: float,
+def randomize_steps(step, threshold=.5):
+    """Randomly reorient some of the steps to increase domain search"""
+    restep = np.copy(step).view(np.recarray)
+    rnd = 2 * np.random.rand(len(step)) - 1
+    restep.x = np.where(np.abs(rnd) < threshold, step.x, step.y * np.sign(rnd))
+    restep.y = np.where(np.abs(rnd) < threshold, step.y, -step.x * np.sign(rnd))
+
+    return restep
+
+
+def search_equilibrium(layout, farm_radius: float, iterations: int,
                        downwind_vectors, wind_freq,
                        wind_speed, turb_ci, turb_co):
     """Iteratively move towards a (hoped) equilibrium layout
@@ -95,41 +105,79 @@ def search_equilibrium(layout, farm_radius: float, tol: float,
     Return the final layout.
 
     """
-    cur_opt = 1
-    best_opt = 1
+    # useful parameters
     n = len(layout)
+    scale_multiplier = 1 # TODO: make this configurable, it has an impact
+                           # (optimal value depends on size as well)
+                           # too high and everything lands on the border
+                           # val ≠ 1 seem incompatible with randomized steps
     step_scaler = 2 * farm_radius / n  # TODO: try smaller and larger steps
+    # iteration & quality tracking variables
+    cur_opt = 1.0
+    best_opt = 1.0
     max_step = np.nan
     max_repulsion = np.nan
-    i = 0
+    steps, repulsions, retrenchments = 0, 0, 0
+    # layouts we track
     new = np.copy(layout).view(np.recarray)
     best = np.copy(layout).view(np.recarray)
-    while True:
+    while steps + repulsions + retrenchments < iterations:
+        new = np.copy(layout).view(np.recarray)
+        # evaluate current layout
+        repulsion = proximity_repulsion(layout)
+        max_repulsion = np.max(np.sqrt(repulsion.x ** 2 + repulsion.y ** 2))
+        if max_repulsion > 0:  # distance constraint violated!
+            # move so that locally repulsion becomes zero
+            # (new repulsion is possible)
+#            print(steps, repulsions, retrenchments,
+#                  'REPULSIVE layout', max_repulsion)
+            new.x += repulsion.x
+            new.y += repulsion.y
+            new = constraint_fixer(new, farm_radius)
+            layout = np.copy(new).view(np.recarray)
+            max_step, cur_opt = np.nan, np.nan
+            repulsions += 1
+            continue
+        # non-repulsive layout
         powers = wflocs.rose_power(layout, downwind_vectors, wind_speed,
                                    turb_ci, turb_co)
         cur_opt = 1 - np.sum(wind_freq * np.sum(powers, axis=1)) / n
-        print(i, cur_opt, max_step, max_repulsion)
-        if max_repulsion == 0.0 and cur_opt > 1.1 * best_opt:
+        print(steps, repulsions, retrenchments, cur_opt)
+        if cur_opt > 1.1 * best_opt:  # stopping crit
+            print(steps, repulsions, retrenchments, 'HOPELESS degradation')
             break
-        if max_repulsion == 0.0 and cur_opt < best_opt:
+        if cur_opt > 1.04 * best_opt:  # This hasn't helped in any case yet…
+            step_scaler /= scale_multiplier
+            print(steps, repulsions, retrenchments,
+                  'WORRYING degradation', '| unit step now', step_scaler)
+            layout = np.copy(best).view(np.recarray)
+            cur_opt = best_opt
+            max_step = np.nan
+            retrenchments += 1
+            continue
+        if cur_opt < best_opt:  # new best layout
+            step_scaler *= scale_multiplier
             best = np.copy(layout).view(np.recarray)
-        best_opt = np.minimum(cur_opt, best_opt)
-        repulsion = proximity_repulsion(layout)
-        repulsion_size = np.sqrt(repulsion.x ** 2 + repulsion.y ** 2)
-        max_repulsion = np.max(repulsion_size)
+            best_opt = cur_opt
+            print(steps, repulsions, retrenchments,
+                  '*** BEST layout', '| unit step now', step_scaler)
+        # update the layout according to pseudo-gradients
         deficits = wflocs.rose_deficits(wind_speed, turb_ci, turb_co, powers)
         step = wflocs.pseudo_gradient(wind_freq, downwind_vectors, deficits)
+        step = randomize_steps(step, .75)
         # remove common drift
         step.x -= np.mean(step.x)
         step.y -= np.mean(step.y)
         # calculate new layout
-        new.x += np.where(max_repulsion > 0, repulsion.x, step_scaler * step.x)
-        new.y += np.where(max_repulsion > 0, repulsion.y, step_scaler * step.y)
+        new.x += step_scaler * step.x
+        new.y += step_scaler * step.y
         new = constraint_fixer(new, farm_radius)
+        max_step = np.max(np.sqrt((new.x - layout.x) ** 2 +
+                                  (new.y - layout.y) ** 2))
         # update loop variables
-        step_size = np.sqrt((new.x - layout.x) ** 2 + (new.y - layout.y) ** 2)
-        max_step = np.max(step_size)
         layout = np.copy(new).view(np.recarray)
-        i += 1
+        print(steps, repulsions, retrenchments, 'STEP taken', max_step)
+        steps += 1
 
+    print(best_opt)
     return best
