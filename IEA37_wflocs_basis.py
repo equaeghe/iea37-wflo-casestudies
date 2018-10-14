@@ -258,7 +258,7 @@ if __name__ == "__main__":
     # Calculate the AEP from ripped values
     powers = rose_power(turb_coords, downwind_vector(wind_dir), wind_speed,
                         turb_ci, turb_co)
-    AEP = rated_pwr * calcAEP(powers)
+    AEP = rated_pwr * calcAEP(powers, wind_freq)
     AEP /= 1.E3  # Convert to GWh from MWh
     # Print AEP for each binned direction, with 5 digits behind the decimal.
     print(np.array2string(AEP, precision=8, floatmode='fixed',
