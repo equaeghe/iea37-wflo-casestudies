@@ -18,18 +18,12 @@ def constraint_fixer(layout, farm_radius: float):
     return layout
 
 
-def proximity_repulsion(layout, min_dist=2.0):
+def proximity_repulsion(vectors, min_dist=2.0):
     """Generates repulsion steps for turbines that are too close to each other
 
     min_dist is in units of rotor diameter
 
     """
-    # Calculate matrix of vectors between all pairs of turbines
-    position_matrix = np.tile(layout, (len(layout), 1))
-    vectors = np.recarray(position_matrix.shape, wflocs.coordinate)
-    vectors.x = position_matrix.x - position_matrix.x.T
-    vectors.y = position_matrix.y - position_matrix.y.T
-
     # Calculate matrix of pairwise turbine distances
     dists = np.sqrt(vectors.x ** 2 + vectors.y ** 2)
 
@@ -124,7 +118,8 @@ def search_equilibrium(layout, farm_radius: float, iterations: int,
     while steps + repulsions + retrenchments < iterations:
         new = np.copy(layout).view(np.recarray)
         # evaluate current layout
-        repulsion = proximity_repulsion(layout)
+        turbine_vectors = wflocs.turbine_vectors(layout)
+        repulsion = proximity_repulsion(turbine_vectors)
         max_repulsion = np.max(np.sqrt(repulsion.x ** 2 + repulsion.y ** 2))
         if max_repulsion > 0:  # distance constraint violated!
             # move so that locally repulsion becomes zero
@@ -139,8 +134,9 @@ def search_equilibrium(layout, farm_radius: float, iterations: int,
             repulsions += 1
             continue
         # non-repulsive layout
-        powers = wflocs.rose_power(layout, downwind_vectors, wind_speed,
-                                   turb_ci, turb_co)
+        powers, blame_fractions = wflocs.rose_power(layout, downwind_vectors,
+                                                    wind_speed,
+                                                    turb_ci, turb_co)
         cur_opt = 1 - np.sum(wind_freq * np.sum(powers, axis=1)) / n
         print(steps, repulsions, retrenchments, cur_opt)
         if cur_opt > 1.1 * best_opt:  # stopping crit
@@ -162,8 +158,9 @@ def search_equilibrium(layout, farm_radius: float, iterations: int,
             print(steps, repulsions, retrenchments,
                   '*** BEST layout', '| unit step now', step_scaler)
         # update the layout according to pseudo-gradients
-        deficits = wflocs.rose_deficits(wind_speed, turb_ci, turb_co, powers)
-        step = wflocs.pseudo_gradient(wind_freq, downwind_vectors, deficits)
+        wakeless_pwr = wflocs.wakeless_pwr(wind_speed, turb_ci, turb_co)
+        step = wflocs.pseudo_gradient(wind_freq, turbine_vectors,
+                                      wakeless_pwr - powers, blame_fractions)
         step = randomize_steps(step, .75)
         # remove common drift
         step.x -= np.mean(step.x)
