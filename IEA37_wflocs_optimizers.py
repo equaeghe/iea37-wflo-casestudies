@@ -107,21 +107,22 @@ def search_equilibrium(layout, farm_radius: float, iterations: int,
     """
     # useful parameters
     n = len(layout)
-    scale_multiplier = 1 # TODO: make this configurable, it has an impact
+    scale_multiplier = 0.9 # TODO: make this configurable, it has an impact
                            # (optimal value depends on size as well)
                            # too high and everything lands on the border
                            # val ≠ 1 seem incompatible with randomized steps
-    step_scaler = 2 * farm_radius / n  # TODO: try smaller and larger steps
+    step_scaler = 16 * farm_radius / n  # TODO: try smaller and larger steps
     # iteration & quality tracking variables
     cur_opt = 1.0
     best_opt = 1.0
+    best_step = -1
     max_step = np.nan
     max_repulsion = np.nan
     steps, repulsions, retrenchments = 0, 0, 0
     # layouts we track
     new = np.copy(layout).view(np.recarray)
     best = np.copy(layout).view(np.recarray)
-    while steps + repulsions + retrenchments < iterations:
+    while steps + retrenchments < iterations:
         new = np.copy(layout).view(np.recarray)
         # evaluate current layout
         repulsion = proximity_repulsion(layout)
@@ -142,29 +143,32 @@ def search_equilibrium(layout, farm_radius: float, iterations: int,
         powers = wflocs.rose_power(layout, downwind_vectors, wind_speed,
                                    turb_ci, turb_co)
         cur_opt = 1 - np.sum(wind_freq * np.sum(powers, axis=1)) / n
-        print(steps, repulsions, retrenchments, cur_opt)
-        if cur_opt > 1.1 * best_opt:  # stopping crit
+        print(steps, repulsions, sep=',', end=' ')
+        if cur_opt > 1.2 * best_opt:  # stopping crit
             print(steps, repulsions, retrenchments, 'HOPELESS degradation')
             break
-        if cur_opt > 1.04 * best_opt:  # This hasn't helped in any case yet…
-            step_scaler /= scale_multiplier
-            print(steps, repulsions, retrenchments,
-                  'WORRYING degradation', '| unit step now', step_scaler)
-            layout = np.copy(best).view(np.recarray)
-            cur_opt = best_opt
-            max_step = np.nan
-            retrenchments += 1
-            continue
+#        if cur_opt > 1.07 * best_opt:
+#            step_scaler /= scale_multiplier
+#            print(steps, repulsions, retrenchments,
+#                  'WORRYING degradation', '| unit step now', step_scaler)
+#            layout = np.copy(best).view(np.recarray)
+#            cur_opt = best_opt
+#            max_step = np.nan
+#            retrenchments += 1
+#            continue
         if cur_opt < best_opt:  # new best layout
             step_scaler *= scale_multiplier
             best = np.copy(layout).view(np.recarray)
             best_opt = cur_opt
-            print(steps, repulsions, retrenchments,
-                  '*** BEST layout', '| unit step now', step_scaler)
+            best_step = steps
+#            print(steps, repulsions, retrenchments,
+#                  '*** BEST layout', '| unit step now', step_scaler)
+        else:
+            step_scaler /= scale_multiplier
         # update the layout according to pseudo-gradients
         deficits = wflocs.rose_deficits(wind_speed, turb_ci, turb_co, powers)
         step = wflocs.pseudo_gradient(wind_freq, downwind_vectors, deficits)
-        step = randomize_steps(step, .75)
+#        step = randomize_steps(step, .85)
         # remove common drift
         step.x -= np.mean(step.x)
         step.y -= np.mean(step.y)
@@ -176,8 +180,8 @@ def search_equilibrium(layout, farm_radius: float, iterations: int,
                                   (new.y - layout.y) ** 2))
         # update loop variables
         layout = np.copy(new).view(np.recarray)
-        print(steps, repulsions, retrenchments, 'STEP taken', max_step)
+#        print(steps, repulsions, retrenchments, 'STEP taken', max_step)
         steps += 1
 
-    print(best_opt)
+    print('\n*', best_step, best_opt)
     return best
