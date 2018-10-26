@@ -101,22 +101,23 @@ def search_equilibrium(layout, farm_radius: float, iterations: int,
     """
     # useful parameters
     n = len(layout)
-    scale_multiplier = 1 # TODO: make this configurable, it has an impact
+    scale_multiplier = 0.9 # TODO: make this configurable, it has an impact
                            # (optimal value depends on size as well)
                            # too high and everything lands on the border
                            # val ≠ 1 seem incompatible with randomized steps
-    step_scaler = 2 * farm_radius / n  # TODO: try smaller and larger steps
+    step_scaler = 16 * farm_radius / n  # TODO: try smaller and larger steps
     # iteration & quality tracking variables
     cur_opt = 1.0
     best_step = -1
     best_opt = 1.0
+    best_step = -1
     max_step = np.nan
     max_repulsion = np.nan
     steps, repulsions, retrenchments = 0, 0, 0
     # layouts we track
     new = np.copy(layout).view(np.recarray)
     best = np.copy(layout).view(np.recarray)
-    while steps + repulsions + retrenchments < iterations:
+    while steps + retrenchments < iterations:
         new = np.copy(layout).view(np.recarray)
         # evaluate current layout
         turbine_vectors = wflocs.turbine_vectors(layout)
@@ -139,8 +140,8 @@ def search_equilibrium(layout, farm_radius: float, iterations: int,
                                                     wind_speed,
                                                     turb_ci, turb_co)
         cur_opt = 1 - np.sum(wind_freq * np.sum(powers, axis=1)) / n
-        print(steps, repulsions, retrenchments, cur_opt)
-        if cur_opt > 1.1 * best_opt:  # stopping crit
+        print(steps, repulsions, sep=',', end=' ')
+        if cur_opt > 1.2 * best_opt:  # stopping crit
             print(steps, repulsions, retrenchments, 'HOPELESS degradation')
             break
 #        if cur_opt > 1.07 * best_opt:
@@ -157,8 +158,11 @@ def search_equilibrium(layout, farm_radius: float, iterations: int,
             best = np.copy(layout).view(np.recarray)
             best_step = steps
             best_opt = cur_opt
-            print(steps, repulsions, retrenchments,
-                  '*** BEST layout', '| unit step now', step_scaler)
+            best_step = steps
+#            print(steps, repulsions, retrenchments,
+#                  '*** BEST layout', '| unit step now', step_scaler)
+        else:
+            step_scaler /= scale_multiplier
         # update the layout according to pseudo-gradients
         wakeless_pwr = wflocs.wakeless_pwr(wind_speed, turb_ci, turb_co)
         step = wflocs.pseudo_gradient(wind_freq, turbine_vectors,
@@ -175,8 +179,9 @@ def search_equilibrium(layout, farm_radius: float, iterations: int,
                                   (new.y - layout.y) ** 2))
         # update loop variables
         layout = np.copy(new).view(np.recarray)
-        print(steps, repulsions, retrenchments, 'STEP taken', max_step)
+#        print(steps, repulsions, retrenchments, 'STEP taken', max_step)
         steps += 1
 
     print(best_step, best_opt)
+    print('\n*', best_step, best_opt)
     return best
