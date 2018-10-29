@@ -31,12 +31,12 @@ def proximity_repulsion(vectors, min_dist=2.0):
     step_size = (min_dist - dists) / 2
         # signed; will be so used if negative; should be just enough to fix
         # the issue (unless there is opposing repulsion as well)
-    repulsion_steps = np.recarray(dists.shape, wflocs.coordinate)
+    repulsion_steps = np.recarray(dists.shape, wflocs.xy_pair)
     repulsion_steps.x = np.where(step_size > 0, step_size * vectors.x, 0)
     repulsion_steps.y = np.where(step_size > 0, step_size * vectors.y, 0)
 
     # Combine repulsion steps in all directions for each turbine
-    repulsion_leap = np.recarray(vectors.shape[0], wflocs.coordinate)
+    repulsion_leap = np.recarray(vectors.shape[0], wflocs.xy_pair)
     repulsion_leap.x = np.sum(repulsion_steps.x, 0)
     repulsion_leap.y = np.sum(repulsion_steps.y, 0)
 
@@ -67,7 +67,7 @@ def random_layout(number_of_turbines: int, farm_radius: float):
     distribution with standard deviation a third the farm radius.
 
     """
-    layout = np.recarray((number_of_turbines,), wflocs.coordinate)
+    layout = np.recarray((number_of_turbines,), wflocs.xy_pair)
     magnitudes = farm_radius * np.random.rand(number_of_turbines)
     angles = 2 * np.pi * np.random.rand(number_of_turbines)
         # TODO: sample according to wind resource and rotate 90°
@@ -99,6 +99,15 @@ def search_equilibrium(layout, farm_radius: float, iterations: int,
     Return the final layout.
 
     """
+    # TODO: A defect of the current approach is that only the turbine
+    #       experiencing the wake is being moved because of that. Actually also
+    #       the turbines to blame should be moved, according to how much they
+    #       are to blame. My current idea is to just move them away from the
+    #       affected turbine and not take the wind direction into account for
+    #       this. Alotting half the deficit to this backpush seems reasonable.
+    #       (Why this is needed: think about what happens when applying a
+    #       single wind direction.)
+
     # useful parameters
     n = len(layout)
     scale_multiplier = 0.9 # TODO: make this configurable, it has an impact
@@ -106,6 +115,7 @@ def search_equilibrium(layout, farm_radius: float, iterations: int,
                            # too high and everything lands on the border
                            # val ≠ 1 seem incompatible with randomized steps
     step_scaler = 16 * farm_radius / n  # TODO: try smaller and larger steps
+    cross_fraction = 0
     # iteration & quality tracking variables
     cur_opt = 1.0
     best_step = -1
@@ -120,8 +130,8 @@ def search_equilibrium(layout, farm_radius: float, iterations: int,
     while steps + retrenchments < iterations:
         new = np.copy(layout).view(np.recarray)
         # evaluate current layout
-        turbine_vectors = wflocs.turbine_vectors(layout)
-        repulsion = proximity_repulsion(turbine_vectors)
+        vectors = wflocs.turbine_vectors(layout)
+        repulsion = proximity_repulsion(vectors.T)  # TODO: transpose!?
         max_repulsion = np.max(np.sqrt(repulsion.x ** 2 + repulsion.y ** 2))
         if max_repulsion > 0:  # distance constraint violated!
             # move so that locally repulsion becomes zero
@@ -136,10 +146,10 @@ def search_equilibrium(layout, farm_radius: float, iterations: int,
             repulsions += 1
             continue
         # non-repulsive layout
-        powers, blame_array = wflocs.rose_power(layout, downwind_vectors,
-                                                    wind_speed,
-                                                    turb_ci, turb_co)
-        cur_opt = 1 - np.sum(wind_freq * np.sum(powers, axis=1)) / n
+        frame_vectors = wflocs.wind_frames(vectors, downwind_vectors)
+        loss, blame_fractions = wflocs.gaussian_wake(frame_vectors)
+        powers = wflocs.power(loss, wind_speed, turb_ci, turb_co)
+        cur_opt = 1 - np.sum(powers @ wind_freq) / n
         print(steps, repulsions, sep=',', end=' ')
         if cur_opt > 1.2 * best_opt:  # stopping crit
             print(steps, repulsions, retrenchments, 'HOPELESS degradation')
@@ -165,8 +175,9 @@ def search_equilibrium(layout, farm_radius: float, iterations: int,
             step_scaler /= scale_multiplier
         # update the layout according to pseudo-gradients
         wakeless_pwr = wflocs.wakeless_pwr(wind_speed, turb_ci, turb_co)
-        step = wflocs.pseudo_gradient(wind_freq, turbine_vectors,
-                                      wakeless_pwr - powers, blame_array)
+        step = wflocs.pseudo_gradient(wind_freq, downwind_vectors,
+                                      frame_vectors, wakeless_pwr - powers,
+                                      blame_fractions, cross_fraction)
 #        step = randomize_steps(step, .75)
         # remove common drift
         step.x -= np.mean(step.x)
@@ -175,8 +186,8 @@ def search_equilibrium(layout, farm_radius: float, iterations: int,
         new.x += step_scaler * step.x
         new.y += step_scaler * step.y
         new = constraint_fixer(new, farm_radius)
-        max_step = np.max(np.sqrt((new.x - layout.x) ** 2 +
-                                  (new.y - layout.y) ** 2))
+#        max_step = np.max(np.sqrt((new.x - layout.x) ** 2 +
+#                                  (new.y - layout.y) ** 2))
         # update loop variables
         layout = np.copy(new).view(np.recarray)
 #        print(steps, repulsions, retrenchments, 'STEP taken', max_step)

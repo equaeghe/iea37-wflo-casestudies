@@ -28,18 +28,29 @@ import numpy as np
 import sys
 import yaml                             # For reading .yaml files
 
-# Structured datatype for holding coordinate pair
-coordinate = np.dtype([('x', 'f8'), ('y', 'f8')])
+# Structured datatypes for holding (coordinate) pairs
+xy_pair = np.dtype([('x', 'f8'), ('y', 'f8')])
+dc_pair = np.dtype([('d', 'f8'), ('c', 'f8')])  # downwind/crosswind
 
 
 def turbine_vectors(turb_coords):
-    """Calculate matrix of vectors between all pairs of turbines"""
+    """Calculate matrix of vectors between all pairs of turbines
+
+    * The first array index fixes the target,
+      selecting an array of incoming vectors.
+    * The second array index fixes the source,
+      selecting an array of outgoing vectors.
+
+    """
     position_matrix = np.tile(turb_coords, (len(turb_coords), 1))
-    vectors = np.recarray(position_matrix.shape, coordinate)
+    # all rows of position_matrix (fixed first index) are the same
+    vectors = np.recarray(position_matrix.shape, xy_pair)
     vectors.x = position_matrix.x - position_matrix.x.T
     vectors.y = position_matrix.y - position_matrix.y.T
 
-    return vectors
+    return vectors.T  # vectors[target turbines, source turbines]
+    # TODO: the transpose above was a bugfix, so it seems we mixed up
+    # something here; check & clarify!
 
 
 def downwind_vector(windrose_deg):
@@ -51,25 +62,30 @@ def downwind_vector(windrose_deg):
     # - from degrees to radians
     standard_rad = np.radians(90 - windrose_deg + 180)
 
-    downwind = np.recarray(standard_rad.shape, coordinate)
+    downwind = np.recarray(standard_rad.shape, xy_pair)
     downwind.x = np.cos(standard_rad)
     downwind.y = np.sin(standard_rad)
-    return downwind
+    return downwind  # downwind[wind directions]
 
 
-def WindFrame(turb_coords, downwind):
-    """Convert map coordinates to downwind/crosswind coordinates."""
+def wind_frames(coords, downwinds):
+    """Convert map coordinates to downwind/crosswind coordinates
 
-    # Convert to downwind(x) & crosswind(y) coordinates
-    frame_coords = np.recarray(turb_coords.shape, coordinate)
-    frame_coords.x = turb_coords.x *  downwind.x + turb_coords.y * downwind.y
-    frame_coords.y = turb_coords.x * -downwind.y + turb_coords.y * downwind.x
+    The last array index fixes the downwind direction.
+
+    """
+    frame_coords = np.recarray(coords.shape + downwinds.shape, dc_pair)
+    coords = np.expand_dims(coords, -1).view(np.recarray)
+    frame_coords.d = coords.x *  downwinds.x + coords.y * downwinds.y
+    frame_coords.c = coords.x * -downwinds.y + coords.y * downwinds.x
+    coords = np.squeeze(coords, -1).view(np.recarray)
 
     return frame_coords
+    # frame_coords[target turbines, source turbines, wind directions]
 
 
-def GaussianWake(frame_coords):
-    """Return each turbine's total loss due to wake from upstream turbines"""
+def gaussian_wake(frame_vectors):
+    """Return each turbine's total speed deficit due to turbine wakes"""
     # Equations and values explained in <iea37-wakemodel.pdf>
 
     # Constant thrust coefficient
@@ -77,29 +93,27 @@ def GaussianWake(frame_coords):
     # Constant, relating to a turbulence intensity of 0.075
     k = 0.0324555
 
-    # Calculate matrices of pairwise downwind and crosswind distances
-    frame_coords_matrix = np.tile(frame_coords, (len(frame_coords), 1))
-    dist = np.recarray(frame_coords_matrix.shape, coordinate)
-    dist.x = frame_coords_matrix.x - frame_coords_matrix.x.T
-    dist.y = frame_coords_matrix.y - frame_coords_matrix.y.T
-
     # If the turbine of interest is downwind of the turbine generating the
     # wake, there is a wake loss; calculate it using the Simplified Bastankhah
     # Gaussian wake model
-    downwind = dist.x > 0
-    sigma = k*dist.x[downwind] + 1./np.sqrt(8.)
-    exponent = -0.5 * (dist.y[downwind]/sigma)**2
+    downwind = frame_vectors.d > 0
+    sigma = k*frame_vectors.d[downwind] + 1./np.sqrt(8.)
+    exponent = -0.5 * (frame_vectors.c[downwind]/sigma)**2
     radical = 1. - CT/(8. * sigma**2)
-    losses = np.zeros(dist.shape)
+    losses = np.zeros(frame_vectors.shape)
     losses[downwind] = (1.-np.sqrt(radical)) * np.exp(exponent)
 
     sq_losses = losses ** 2
-    sq_loss = np.sum(sq_losses, axis=0)
+    sq_loss = np.sum(sq_losses, axis=1)  # sum over all source vectors
+    sq_loss = np.expand_dims(sq_loss, 1)
     blame_fractions = np.where(sq_loss > 0, sq_losses / sq_loss, 0.0)
-    # Array holding the wake deficit seen at each turbine
+    sq_loss = np.squeeze(sq_loss, 1)
+    # Array holding the wake speed deficit seen at each turbine
     loss = np.sqrt(sq_loss)
 
     return loss, blame_fractions
+    # loss[turbine, wind directions]
+    # blame_fractions[target turbines, source turbines, wind directions]
 
 
 def power(wake_deficit, wind_speed, turb_ci, turb_co):
@@ -127,24 +141,6 @@ def power(wake_deficit, wind_speed, turb_ci, turb_co):
     return turb_pwr
 
 
-def rose_power(turb_coords, downwind_vectors, wind_speed, turb_ci, turb_co):
-    """Calculate the power generated by each turbine for every direction"""
-    n = len(turb_coords)
-    #  Power produced by the wind farm from each wind direction
-    powers = np.zeros(shape=(len(downwind_vectors), n), dtype=np.double)
-    blame_array = np.zeros(shape=(len(downwind_vectors), n, n),
-                           dtype=np.double)
-    for i, downwind in enumerate(downwind_vectors):
-        # Shift coordinate frame of reference to downwind/crosswind
-        frame_coords = WindFrame(turb_coords, downwind)
-        # Use the Simplified Bastankhah Gaussian wake model for wake deficits
-        wake_deficit, blame_array[i] = GaussianWake(frame_coords)
-        # Calculate powers
-        powers[i] = power(wake_deficit, wind_speed, turb_ci, turb_co)
-
-    return powers, blame_array
-
-
 def wakeless_pwr(wind_speed, turb_ci, turb_co):
     """Calculate the per-turbine wakeless power
 
@@ -152,7 +148,7 @@ def wakeless_pwr(wind_speed, turb_ci, turb_co):
     constant.
 
     """
-    wakeless_pwr = 0.
+    wakeless_pwr = 0.0
     if turb_ci < wind_speed <= turb_co:
         if wind_speed >= 1:  # at or above rated
             wakeless_pwr = 1
@@ -162,33 +158,77 @@ def wakeless_pwr(wind_speed, turb_ci, turb_co):
     return wakeless_pwr
 
 
-def pseudo_gradient(wind_freq, turbine_vectors, deficits, blame_array):
-    """Calculate the pseudo gradient for each turbine"""
-    # deficits is wakeless_pwr - powers
+def push_down(downwinds, deficits):
+    """Return per-turbine, per-direction downwind vector"""
+    gradients = np.recarray(deficits.shape, xy_pair)
+    gradients.x = deficits * downwinds.x
+    gradients.y = deficits * downwinds.y
 
-    # normalize unit vectors
-    unit_vectors = np.copy(turbine_vectors).view(np.recarray)
-    norms = np.sqrt(unit_vectors.x ** 2 + unit_vectors.y ** 2)
-    unit_vectors.x = np.where(norms > 0, unit_vectors.x / norms, 1.0)
-    unit_vectors.y = np.where(norms > 0, unit_vectors.y / norms, 1.0)
-
-    # calculate pseudo-gradient
-    pseudo_gradient = np.recarray((deficits.shape[1],), coordinate)
-    weighted_deficits = wind_freq * deficits.T
-    pseudo_gradient.x = np.sum(weighted_deficits
-                               * (blame_array * unit_vectors.x).T, axis=(1, 2))
-    pseudo_gradient.y = np.sum(weighted_deficits
-                               * (blame_array * unit_vectors.y).T, axis=(1, 2))
-
-    return pseudo_gradient
+    return gradients
 
 
-def calcAEP(powers, wind_freq):  # powers is the output of rose_power
+def push_cross(downwinds, frame_vectors, deficits, blame_fractions):
+    """Return per-turbine, per-direction crosswind vector"""
+    # what sense should a crosswind movement go: away from the wake center
+    # determine it from the sign of the crosswind frame_vector component
+    crosswind_sense = np.sign(frame_vectors.d)
+
+    cross_deficits = (deficits
+                      * np.sum(blame_fractions * crosswind_sense, axis=1))
+
+    gradients = np.recarray(deficits.shape, xy_pair)
+    gradients.x = cross_deficits * -downwinds.y  # latter factor is crosswind.x
+    gradients.y = cross_deficits *  downwinds.x  # latter factor is crosswind.y
+
+    return gradients
+
+
+def push_back(turbine_vectors, deficits, blame_fractions):
+    """Return per-turbine, per-direction pushback vector"""
+    unit_vectors = np.recarray(turbine_vectors.shape, xy_pair)
+    dists = np.sqrt(unit_vectors.x ** 2 + unit_vectors.y ** 2)
+    unit_vectors.x = np.where(dists > 0, turbine_vectors.x / dists, 0)
+    unit_vectors.y = np.where(dists > 0, turbine_vectors.y / dists, 0)
+
+    blame_deficits = np.expand_dims(deficits, 1) * blame_fractions
+
+    gradients = np.recarray(deficits.shape, xy_pair)
+    gradients.x = np.sum(blame_deficits * np.expand_dims(unit_vectors.x, -1),
+                         axis=0)
+    gradients.y = np.sum(blame_deficits * np.expand_dims(unit_vectors.y, -1),
+                         axis=0)
+
+    return gradients
+
+
+def pseudo_gradient(wind_freq, downwinds, frame_vectors,
+                    deficits, blame_fractions, cross_fraction):
+    """Calculate the pseudo gradient for each turbine
+
+    * deficits is wakeless_pwr - powers
+    * cross_fraction between 0 and 1;
+      0 selects pure downwind step, 1 a pure crosswind one
+
+    """
+    down_gradients = push_down(downwinds, deficits)
+    cross_gradients = push_cross(downwinds, frame_vectors,
+                                 deficits, blame_fractions)
+
+    pseudo_gradients = np.recarray((deficits.shape[0],), xy_pair)
+    pseudo_gradients.x = (down_gradients.x * (1 - cross_fraction)
+                          + cross_gradients.x * cross_fraction) @ wind_freq
+    pseudo_gradients.y = (down_gradients.y * (1 - cross_fraction)
+                          + cross_gradients.y * cross_fraction) @ wind_freq
+
+    return pseudo_gradients
+
+
+def calcAEP(powers, wind_freq):  # powers is the output of power
     """Calculate the wind farm AEP."""
 
     #  Convert power to AEP
     hrs_per_year = 365. * 24.
-    AEP = hrs_per_year * wind_freq * np.sum(powers, axis=1)
+    AEP = hrs_per_year * wind_freq * np.sum(powers, axis=0)
 
     return AEP
 
@@ -205,7 +245,7 @@ def getTurbLocYAML(file_name):
     # Rip the coordinates (Convert from <list> to <recarray>)
     positions = props['wind_turbine_positions']
     turb_coords = np.fromiter(map(tuple, positions),
-                              dtype=coordinate, count=len(positions))
+                              dtype=xy_pair, count=len(positions))
     turb_coords = turb_coords.view(np.recarray)
 
     # Rip the expected AEP, used for comparison
@@ -281,9 +321,11 @@ if __name__ == "__main__":
     # (nothing to do)
 
     # Calculate the AEP from ripped values
-    powers, blame_fractions = rose_power(turb_coords,
-                                         downwind_vector(wind_dir),
-                                         wind_speed, turb_ci, turb_co)
+    vectors = turbine_vectors(turb_coords)
+    downwinds = downwind_vector(wind_dir)
+    frame_vectors = wind_frames(vectors, downwinds)
+    wake_deficit, blame_fractions = gaussian_wake(frame_vectors)
+    powers = power(wake_deficit, wind_speed, turb_ci, turb_co)
     AEP = rated_pwr * calcAEP(powers, wind_freq)
     AEP /= 1.E3  # Convert to GWh from MWh
     # Print AEP for each binned direction, with 5 digits behind the decimal.
