@@ -131,7 +131,7 @@ def search_equilibrium(layout, farm_radius: float, iterations: int,
         new = np.copy(layout).view(np.recarray)
         # evaluate current layout
         vectors = wflocs.turbine_vectors(layout)
-        repulsion = proximity_repulsion(vectors.T)  # TODO: transpose!?
+        repulsion = proximity_repulsion(vectors)
         max_repulsion = np.max(np.sqrt(repulsion.x ** 2 + repulsion.y ** 2))
         if max_repulsion > 0:  # distance constraint violated!
             # move so that locally repulsion becomes zero

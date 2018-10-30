@@ -37,9 +37,9 @@ def turbine_vectors(turb_coords):
     """Calculate matrix of vectors between all pairs of turbines
 
     * The first array index fixes the target,
-      selecting an array of incoming vectors.
-    * The second array index fixes the source,
       selecting an array of outgoing vectors.
+    * The second array index fixes the source,
+      selecting an array of incoming vectors.
 
     """
     position_matrix = np.tile(turb_coords, (len(turb_coords), 1))
@@ -48,9 +48,7 @@ def turbine_vectors(turb_coords):
     vectors.x = position_matrix.x - position_matrix.x.T
     vectors.y = position_matrix.y - position_matrix.y.T
 
-    return vectors.T  # vectors[target turbines, source turbines]
-    # TODO: the transpose above was a bugfix, so it seems we mixed up
-    # something here; check & clarify!
+    return vectors  # vectors[outgoing, incoming]
 
 
 def downwind_vector(windrose_deg):
@@ -76,12 +74,12 @@ def wind_frames(coords, downwinds):
     """
     frame_coords = np.recarray(coords.shape + downwinds.shape, dc_pair)
     coords = np.expand_dims(coords, -1).view(np.recarray)
-    frame_coords.d = coords.x *  downwinds.x + coords.y * downwinds.y
+    frame_coords.d = coords.x * +downwinds.x + coords.y * downwinds.y
     frame_coords.c = coords.x * -downwinds.y + coords.y * downwinds.x
     coords = np.squeeze(coords, -1).view(np.recarray)
 
     return frame_coords
-    # frame_coords[target turbines, source turbines, wind directions]
+    # frame_coords[outgoing, incoming, wind directions]
 
 
 def gaussian_wake(frame_vectors):
@@ -104,16 +102,18 @@ def gaussian_wake(frame_vectors):
     losses[downwind] = (1.-np.sqrt(radical)) * np.exp(exponent)
 
     sq_losses = losses ** 2
-    sq_loss = np.sum(sq_losses, axis=1)  # sum over all source vectors
-    sq_loss = np.expand_dims(sq_loss, 1)
-    blame_fractions = np.where(sq_loss > 0, sq_losses / sq_loss, 0.0)
-    sq_loss = np.squeeze(sq_loss, 1)
+    sq_loss = np.sum(sq_losses, axis=0)  # sum over all outgoing
+    sq_loss_tiled = np.tile(np.expand_dims(sq_loss, 0),
+                            (sq_losses.shape[1], 1, 1))
+    b = sq_loss_tiled > 0
+    blame_fractions = np.zeros(sq_losses.shape)
+    blame_fractions[b] = sq_losses[b] / sq_loss_tiled[b]
     # Array holding the wake speed deficit seen at each turbine
     loss = np.sqrt(sq_loss)
 
     return loss, blame_fractions
-    # loss[turbine, wind directions]
-    # blame_fractions[target turbines, source turbines, wind directions]
+    # loss[incoming, wind directions]
+    # blame_fractions[outgoing, incoming, wind directions]
 
 
 def power(wake_deficit, wind_speed, turb_ci, turb_co):
@@ -139,6 +139,7 @@ def power(wake_deficit, wind_speed, turb_ci, turb_co):
                            / (1. - turb_ci)) ** 3
 
     return turb_pwr
+    # turb_pwr[incoming, wind directions]
 
 
 def wakeless_pwr(wind_speed, turb_ci, turb_co):
@@ -171,32 +172,37 @@ def push_cross(downwinds, frame_vectors, deficits, blame_fractions):
     """Return per-turbine, per-direction crosswind vector"""
     # what sense should a crosswind movement go: away from the wake center
     # determine it from the sign of the crosswind frame_vector component
-    crosswind_sense = np.sign(frame_vectors.d)
+    crosswind_sense = np.sign(frame_vectors.c)
 
-    cross_deficits = (deficits
-                      * np.sum(blame_fractions * crosswind_sense, axis=1))
+    cross_deficits = (deficits  # sum over all outgoing
+                      * np.sum(blame_fractions * crosswind_sense, axis=0))
 
     gradients = np.recarray(deficits.shape, xy_pair)
     gradients.x = cross_deficits * -downwinds.y  # latter factor is crosswind.x
-    gradients.y = cross_deficits *  downwinds.x  # latter factor is crosswind.y
+    gradients.y = cross_deficits * +downwinds.x  # latter factor is crosswind.y
 
     return gradients
 
 
-def push_back(turbine_vectors, deficits, blame_fractions):
+def push_back(turb_vectors, deficits, blame_fractions):
     """Return per-turbine, per-direction pushback vector"""
-    unit_vectors = np.recarray(turbine_vectors.shape, xy_pair)
-    dists = np.sqrt(unit_vectors.x ** 2 + unit_vectors.y ** 2)
-    unit_vectors.x = np.where(dists > 0, turbine_vectors.x / dists, 0)
-    unit_vectors.y = np.where(dists > 0, turbine_vectors.y / dists, 0)
+    unit_vectors = np.recarray(turb_vectors.shape, xy_pair)
+    unit_vectors.x = 0
+    unit_vectors.y = 0
+    dists = np.sqrt(turb_vectors.x ** 2 + turb_vectors.y ** 2)
+    b = dists > 0
+    unit_vectors_b = np.recarray(unit_vectors[b].shape, xy_pair)
+    unit_vectors_b.x = turb_vectors[b].x / dists[b]
+    unit_vectors_b.y = turb_vectors[b].y / dists[b]
+    unit_vectors[b] = unit_vectors_b
 
-    blame_deficits = np.expand_dims(deficits, 1) * blame_fractions
+    blame_deficits = np.expand_dims(deficits, 0) * blame_fractions
 
     gradients = np.recarray(deficits.shape, xy_pair)
-    gradients.x = np.sum(blame_deficits * np.expand_dims(unit_vectors.x, -1),
-                         axis=0)
-    gradients.y = np.sum(blame_deficits * np.expand_dims(unit_vectors.y, -1),
-                         axis=0)
+    gradients.x = -np.sum(blame_deficits * np.expand_dims(unit_vectors.x, -1),
+                          axis=1)  # sum over all incoming
+    gradients.y = -np.sum(blame_deficits * np.expand_dims(unit_vectors.y, -1),
+                          axis=1)  # sum over all incoming
 
     return gradients
 
