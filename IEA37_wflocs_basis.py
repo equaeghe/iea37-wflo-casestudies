@@ -207,24 +207,22 @@ def push_back(turb_vectors, deficits, blame_fractions):
     return gradients
 
 
-def pseudo_gradient(wind_freq, downwinds, frame_vectors,
-                    deficits, blame_fractions, cross_fraction):
-    """Calculate the pseudo gradient for each turbine
-
-    * deficits is wakeless_pwr - powers
-    * cross_fraction between 0 and 1;
-      0 selects pure downwind step, 1 a pure crosswind one
-
-    """
+def pseudo_gradient(wind_freq, downwinds, turb_vectors, frame_vectors,
+                    deficits, blame_fractions,
+                    down_coeff, cross_coeff, back_coeff):
+    """Calculate the pseudo gradient for each turbine"""
     down_gradients = push_down(downwinds, deficits)
     cross_gradients = push_cross(downwinds, frame_vectors,
                                  deficits, blame_fractions)
+    back_gradients = push_back(turb_vectors, deficits, blame_fractions)
 
     pseudo_gradients = np.recarray((deficits.shape[0],), xy_pair)
-    pseudo_gradients.x = (down_gradients.x * (1 - cross_fraction)
-                          + cross_gradients.x * cross_fraction) @ wind_freq
-    pseudo_gradients.y = (down_gradients.y * (1 - cross_fraction)
-                          + cross_gradients.y * cross_fraction) @ wind_freq
+    pseudo_gradients.x = (down_gradients.x * down_coeff
+                          + cross_gradients.x * cross_coeff
+                          + back_gradients.x * back_coeff) @ wind_freq
+    pseudo_gradients.y = (down_gradients.y * down_coeff
+                          + cross_gradients.y * cross_coeff
+                          + back_gradients.y * back_coeff) @ wind_freq
 
     return pseudo_gradients
 
