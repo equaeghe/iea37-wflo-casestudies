@@ -101,22 +101,29 @@ def search_equilibrium(layout, farm_radius: float, iterations: int,
     """
     # useful parameters
     n = len(layout)
-    scale_multiplier = .89 # TODO: make this configurable, it has an impact
+    scale_multiplier = 0.89 # TODO: make this configurable, it has an impact
                            # (optimal value depends on size as well)
                            # too high and everything lands on the border
                            # val ≠ 1 seem incompatible with randomized steps
-    step_scaler = 56 * farm_radius / n
+    step_scaler = 18 * farm_radius / n
     down_coeff, cross_coeff, back_coeff = 0, 0, 0
-    m = 4
-    # BEST non-interleaved
+    m = 3
+    # BEST non-interleaved (gaussian_wake)
     # for 16 turbine case: 0, 1, 0 -> 14.1%
     # for 36 turbine case: .45, 0, .55
     # for 64 turbine case: .5, 0, .5; 0, 1, 0
     # iteration & quality tracking variables
-    # BEST interleaved
+    # BEST interleaved (gaussian_wake)
     # for 64: step_scaler =  56 * farm_radius / n, m = 4, scale_multiplier = .89 -> 22.5%
     # for 36: step_scaler =  52 * farm_radius / n, m = 2, scale_multiplier = .9 -> 21.6%
     # for 16: step_scaler =  16 * farm_radius / n, m = 3, scale_multiplier = .95 -> 14.3%
+    # for 9: step_scaler =  18 * farm_radius / n, m = 3, scale_multiplier = .89 -> 7.0%
+    # for 9: step_scaler =  17 * farm_radius / n, m = -2, scale_multiplier = .93 -> 6.9%
+    # BEST interleaved (rotor-averaged gaussian_wake w/mirror turbine)
+    # for 9: step_scaler =  20 * farm_radius / n, m = -2, scale_multiplier = 0.94 -> 8.1%
+    # for 9: step_scaler =  20 * farm_radius / n, m = -3, scale_multiplier = 0.92 -> 8.1%
+    # for 9: step_scaler =  14 * farm_radius / n, m = 4, scale_multiplier = 0.98 -> 8.0%
+    # for 9: step_scaler =  5 * farm_radius / n, m = -6, scale_multiplier = 1.02 -> 7.0%
     cur_opt = 1.0
     best_step = -1
     best_opt = 1.0
@@ -151,7 +158,8 @@ def search_equilibrium(layout, farm_radius: float, iterations: int,
             continue
         # non-repulsive layout
         frame_vectors = wflocs.wind_frames(vectors, downwind_vectors)
-        loss, blame_fractions = wflocs.gaussian_wake(frame_vectors)
+#        loss, blame_fractions = wflocs.gaussian_wake(frame_vectors)
+        loss, blame_fractions = wflocs.ra_gaussian_wake(frame_vectors, 110/130) # TODO: hardcoded, not good!
         powers = wflocs.power(loss, wind_speed, turb_ci, turb_co)
         cur_opt = 1 - np.sum(powers @ wind_freq) / n
         print(steps, repulsions, sep=',', end=' ')

@@ -1,0 +1,34 @@
+uuid: 0da391a6-42c8-4079-a487-8d7dbb781bca
+name: IEA Wind Task 37 Combined Case Study 9 Turbine Farm
+wind_resource: "IEA37-wind_resource.case_study.yaml"
+  # TODO: make it a full URL
+wind_turbine_type: "IEA37-wind_turbine.onshore_reference.yaml"
+  # TODO: make it a full URL
+wake_model:
+  name: Simplified Bastankhah Gaussian wake model
+  details: "iea37-wakemodel.pdf"
+    # TODO: make it a full URL
+constraints:
+  number_of_turbines: 9
+  site_radius: 900.0
+  turbine_distance: 260.0
+optimization_method:
+  name: hand layout
+  details: >-
+    By considering the main wind directions a layout was devised by hand.
+wind_turbine_positions:
+  - [0.0, 0.0]
+  - [0.0, 900.0]
+  - [845.7233587073176, 307.8181289931018]
+  - [516.2187927159415, 737.2368398600926]
+  - [815.677008332985, -380.3564355666295]
+  - [450.0000000000001, -779.4228634059947]
+  - [-516.2187927159415, -737.2368398600926]
+  - [-886.3269777109872, 156.28335990023726]
+  - [-779.4228634059948, 449.99999999999994]
+farm_output:
+  binned: [ 5.10348886,  5.19585505,  6.50639802,  8.02514334,
+           14.83328142, 13.81802591, 23.32507679, 28.14822618,
+           12.87104854,  8.17895695,  8.61240276, 18.50684966,
+           50.31051459,  9.97537651,  7.52659880,  5.07206741]
+  AEP: 226.00931079
