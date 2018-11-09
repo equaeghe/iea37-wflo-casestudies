@@ -141,14 +141,24 @@ def ra_gaussian_wake(frame_vectors, turb_height):
     # c[0] is disc center (already correct), c[1] is ‘left’, c[2] is ‘right’,
     # c[3] is ‘top’/bottom, and c[4] is mirror center
     # in units of turb_diam, turb_radius is 0.5 and turb_radius**2 is 0.25
-    c[1] -= 0.5
-    c[2] += 0.5
-    c[3] = np.sqrt(c[0]**2 + 0.25)
-    c[4] = np.sqrt(c[0]**2 + 4 * turb_height**2)
+    c[1] -= 0.5  # leftmost point of rotor disc (this is at hub height)
+    c[2] += 0.5  # rightmost point of rotor disc (this is at hub height)
+    c[3] = np.sqrt(c[0]**2 + 0.25)  # top/bottom-most point of rotor disc
+    c[4] = np.sqrt(c[0]**2 + 4 * turb_height**2)  # mirror of disc center with
+                                                  # respect to ground
     # calculate exponential factor at all the sampled location
     e = np.exp(-0.5 * (c/sigma)**2)
     # calculate losses as rotor-averaged wake (4-point quadrature)
     # and mirror turbine for ground effect (only at rotor center)
+    #
+    #   The four-point quadrature considers quarter-discs determined by the
+    #   disc center ‘c’, top/bottom ‘v’, and left/right ‘h’. The quarter disc
+    #   is divided into a triangle with those points as vertices and the
+    #   remainder (which lies between v and h as vertices). Quadrature
+    #   coefficients are determined by assigning a weight equal to the area to
+    #   each of these two parts and within them, giving equal weight to each of
+    #   the part's vertices
+    #
     losses = np.zeros(frame_vectors.shape)
     λ = 2/3/np.pi
     losses[downwind] = (1.-np.sqrt(radical)) * (e[4] +
